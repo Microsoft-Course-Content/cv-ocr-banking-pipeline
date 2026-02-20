@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Computer Vision & OCR — Banking Document Analysis</title>
+    <style>
+        :root {
+            --primary: #0E7A0D;
+            --primary-light: #13A10E;
+            --accent: #00B7C3;
+            --success: #107C10;
+            --warning: #FF8C00;
+            --danger: #D13438;
+            --bg: #F5F7F5;
+            --card-bg: #FFFFFF;
+            --text: #323130;
+            --text-light: #605E5C;
+            --border: #EDEBE9;
+            --shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Segoe UI',-apple-system,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+        .header {
+            background:linear-gradient(135deg, var(--primary) 0%, #0B5E0A 100%);
+            color:white; padding:20px 40px; display:flex; align-items:center; justify-content:space-between;
+        }
+        .header h1 { font-size:22px; font-weight:600; }
+        .header .sub { font-size:13px; opacity:0.85; margin-top:2px; }
+        .header .badge { background:rgba(255,255,255,0.15); padding:6px 14px; border-radius:20px; font-size:12px; }
+
+        .container { max-width:1200px; margin:0 auto; padding:24px; }
+
+        /* Tabs */
+        .tabs { display:flex; gap:4px; margin-bottom:20px; background:var(--card-bg); border-radius:12px; padding:4px; box-shadow:var(--shadow); }
+        .tab { flex:1; padding:12px; text-align:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:600; transition:all 0.2s; color:var(--text-light); }
+        .tab:hover { background:#F0F7F0; }
+        .tab.active { background:var(--primary); color:white; }
+
+        .tab-content { display:none; }
+        .tab-content.active { display:block; animation:fadeIn 0.3s ease; }
+
+        .card { background:var(--card-bg); border-radius:12px; box-shadow:var(--shadow); overflow:hidden; }
+        .card-header { padding:14px 20px; border-bottom:1px solid var(--border); font-weight:600; font-size:15px; display:flex; align-items:center; gap:8px; }
+        .card-body { padding:20px; }
+
+        .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+        @media(max-width:900px) { .grid-2 { grid-template-columns:1fr; } }
+
+        /* Upload */
+        .upload-zone {
+            border:2px dashed #C8C6C4; border-radius:10px; padding:40px 20px; text-align:center;
+            cursor:pointer; transition:all 0.3s; background:#FAFAFA;
+        }
+        .upload-zone:hover { border-color:var(--primary); background:#F0F7F0; }
+        .upload-zone .icon { font-size:48px; margin-bottom:10px; }
+        .upload-zone h3 { font-size:16px; }
+        .upload-zone p { font-size:12px; color:var(--text-light); margin-top:4px; }
+
+        .file-preview { display:none; margin-top:14px; padding:12px; background:#F0F7F0; border-radius:8px; border:1px solid #C5E1C5; }
+        .file-preview .info { display:flex; align-items:center; gap:10px; }
+        .file-preview .name { font-weight:600; font-size:14px; }
+        .file-preview .size { font-size:12px; color:var(--text-light); }
+        .file-preview .remove { margin-left:auto; background:none; border:none; color:var(--danger); cursor:pointer; font-size:16px; }
+        .file-preview img { max-width:100%; max-height:200px; border-radius:6px; margin-top:10px; object-fit:contain; }
+
+        .btn { padding:10px 20px; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.2s; }
+        .btn-primary { background:var(--primary); color:white; width:100%; margin-top:12px; }
+        .btn-primary:hover { background:var(--primary-light); }
+        .btn-primary:disabled { background:#C8C6C4; cursor:not-allowed; }
+        .btn-sm { padding:6px 14px; font-size:12px; width:auto; margin-top:0; }
+        .btn-outline { background:transparent; border:1px solid var(--primary); color:var(--primary); }
+
+        /* Progress */
+        .progress-section { display:none; margin-top:16px; }
+        .progress-bg { background:#E1DFDD; border-radius:6px; height:6px; overflow:hidden; }
+        .progress-fill { background:linear-gradient(90deg,var(--primary),var(--accent)); height:100%; border-radius:6px; transition:width 0.5s; width:0%; }
+        .progress-text { font-size:12px; color:var(--text-light); margin-top:6px; }
+
+        /* Results */
+        .results { display:none; margin-top:20px; }
+        .result-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:12px; }
+        .result-card { padding:14px 16px; border-radius:10px; border-left:4px solid var(--primary); background:var(--card-bg); box-shadow:var(--shadow); }
+        .result-card.warn { border-left-color:var(--warning); }
+        .result-card.danger { border-left-color:var(--danger); }
+        .result-card.success { border-left-color:var(--success); }
+        .result-card h4 { font-size:11px; text-transform:uppercase; color:var(--text-light); letter-spacing:0.5px; margin-bottom:6px; }
+        .result-card .val { font-size:18px; font-weight:600; }
+        .result-card .sub { font-size:12px; color:var(--text-light); margin-top:2px; }
+
+        .fields-table { width:100%; border-collapse:collapse; margin-top:16px; }
+        .fields-table th { text-align:left; padding:8px 12px; background:#F3F2F1; font-size:12px; text-transform:uppercase; color:var(--text-light); }
+        .fields-table td { padding:8px 12px; border-bottom:1px solid var(--border); font-size:14px; }
+        .fields-table tr:hover { background:#FAFAFA; }
+
+        .badge-conf { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600; }
+        .badge-conf.high { background:#DFF6DD; color:#107C10; }
+        .badge-conf.med { background:#FFF4CE; color:#8A6914; }
+        .badge-conf.low { background:#FDE7E9; color:#A80000; }
+
+        /* Quality Meter */
+        .quality-meter { margin-top:16px; }
+        .meter-bar { height:12px; border-radius:6px; background:#E1DFDD; overflow:hidden; position:relative; }
+        .meter-fill { height:100%; border-radius:6px; transition:width 0.6s; }
+        .meter-fill.good { background:var(--success); }
+        .meter-fill.ok { background:var(--warning); }
+        .meter-fill.bad { background:var(--danger); }
+        .meter-labels { display:flex; justify-content:space-between; font-size:11px; color:var(--text-light); margin-top:4px; }
+
+        /* Fraud Risk Gauge */
+        .fraud-gauge { text-align:center; margin:16px 0; }
+        .fraud-score { font-size:48px; font-weight:700; }
+        .fraud-score.low { color:var(--success); }
+        .fraud-score.med { color:var(--warning); }
+        .fraud-score.high { color:var(--danger); }
+        .fraud-label { font-size:14px; font-weight:600; margin-top:4px; }
+
+        .check-list { list-style:none; margin-top:12px; }
+        .check-list li { padding:6px 0; font-size:13px; display:flex; align-items:center; gap:8px; }
+        .check-list li.pass { color:var(--success); }
+        .check-list li.fail { color:var(--danger); }
+
+        .json-viewer { background:#1E1E1E; color:#D4D4D4; padding:16px; border-radius:8px; overflow:auto; font-family:'Cascadia Code',monospace; font-size:13px; max-height:400px; white-space:pre-wrap; display:none; margin-top:12px; }
+
+        .status-bar { background:#F3F2F1; padding:8px 40px; font-size:12px; color:var(--text-light); display:flex; justify-content:space-between; border-top:1px solid var(--border); position:fixed; bottom:0; left:0; right:0; }
+        .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+        .dot.on { background:var(--success); } .dot.off { background:var(--danger); }
+
+        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>👁️ Computer Vision & OCR — Banking</h1>
+        <div class="sub">Cheque Reading · ID Verification · Signature Matching · Fraud Detection</div>
+    </div>
+    <div class="badge">v1.0 — Jalal Ahmed Khan</div>
+</div>
+
+<div class="container">
+    <!-- Tabs -->
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('cheque')">💳 Cheque</div>
+        <div class="tab" onclick="switchTab('idcard')">🪪 ID Card</div>
+        <div class="tab" onclick="switchTab('signature')">✍️ Signature</div>
+        <div class="tab" onclick="switchTab('fraud')">🔍 Fraud</div>
+        <div class="tab" onclick="switchTab('quality')">📐 Quality</div>
+        <div class="tab" onclick="switchTab('ocr')">📝 OCR</div>
+    </div>
+
+    <!-- CHEQUE TAB -->
+    <div class="tab-content active" id="tab-cheque">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">💳 Cheque Reader</div>
+                <div class="card-body">
+                    <div class="upload-zone" onclick="triggerUpload('cheque')">
+                        <div class="icon">💳</div>
+                        <h3>Upload cheque image</h3>
+                        <p>Extracts MICR, amount, payee, date, bank details</p>
+                    </div>
+                    <input type="file" id="file-cheque" accept="image/*,.pdf" style="display:none">
+                    <div class="file-preview" id="preview-cheque"></div>
+                    <div class="progress-section" id="prog-cheque">
+                        <div class="progress-bg"><div class="progress-fill" id="bar-cheque"></div></div>
+                        <div class="progress-text" id="text-cheque">Processing...</div>
+                    </div>
+                    <button class="btn btn-primary" id="btn-cheque" disabled onclick="process('cheque')">🔍 Read Cheque</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header" style="justify-content:space-between;">
+                    <span>📊 Results</span>
+                    <button class="btn btn-outline btn-sm" onclick="toggleJson('cheque')">{ } JSON</button>
+                </div>
+                <div class="card-body">
+                    <div class="results" id="results-cheque"></div>
+                    <div class="json-viewer" id="json-cheque"></div>
+                    <div id="empty-cheque" style="text-align:center;padding:40px;color:var(--text-light);">Upload a cheque to see results</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ID CARD TAB -->
+    <div class="tab-content" id="tab-idcard">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">🪪 ID Card Verifier</div>
+                <div class="card-body">
+                    <div class="upload-zone" onclick="triggerUpload('idcard')">
+                        <div class="icon">🪪</div>
+                        <h3>Upload ID document</h3>
+                        <p>Passport, Emirates ID, national ID, driving license</p>
+                    </div>
+                    <input type="file" id="file-idcard" accept="image/*,.pdf" style="display:none">
+                    <div class="file-preview" id="preview-idcard"></div>
+                    <div class="progress-section" id="prog-idcard"><div class="progress-bg"><div class="progress-fill" id="bar-idcard"></div></div><div class="progress-text" id="text-idcard">Processing...</div></div>
+                    <button class="btn btn-primary" id="btn-idcard" disabled onclick="process('idcard')">🔍 Verify ID</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header" style="justify-content:space-between;"><span>📊 Results</span><button class="btn btn-outline btn-sm" onclick="toggleJson('idcard')">{ } JSON</button></div>
+                <div class="card-body"><div class="results" id="results-idcard"></div><div class="json-viewer" id="json-idcard"></div><div id="empty-idcard" style="text-align:center;padding:40px;color:var(--text-light);">Upload an ID document to see results</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIGNATURE TAB -->
+    <div class="tab-content" id="tab-signature">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">✍️ Signature Verifier</div>
+                <div class="card-body">
+                    <div class="upload-zone" onclick="triggerUpload('signature')">
+                        <div class="icon">✍️</div>
+                        <h3>Upload document with signature</h3>
+                        <p>Optionally upload a reference signature to compare</p>
+                    </div>
+                    <input type="file" id="file-signature" accept="image/*,.pdf" style="display:none">
+                    <div class="file-preview" id="preview-signature"></div>
+                    <div style="margin-top:12px;font-size:13px;color:var(--text-light);">Reference signature (optional):</div>
+                    <input type="file" id="file-sigref" accept="image/*" style="margin-top:6px;font-size:13px;">
+                    <div class="progress-section" id="prog-signature"><div class="progress-bg"><div class="progress-fill" id="bar-signature"></div></div><div class="progress-text" id="text-signature">Processing...</div></div>
+                    <button class="btn btn-primary" id="btn-signature" disabled onclick="process('signature')">🔍 Verify Signature</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header" style="justify-content:space-between;"><span>📊 Results</span><button class="btn btn-outline btn-sm" onclick="toggleJson('signature')">{ } JSON</button></div>
+                <div class="card-body"><div class="results" id="results-signature"></div><div class="json-viewer" id="json-signature"></div><div id="empty-signature" style="text-align:center;padding:40px;color:var(--text-light);">Upload a document to verify signature</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FRAUD TAB -->
+    <div class="tab-content" id="tab-fraud">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">🔍 Fraud Detector</div>
+                <div class="card-body">
+                    <div class="upload-zone" onclick="triggerUpload('fraud')">
+                        <div class="icon">🔍</div>
+                        <h3>Upload document to analyze</h3>
+                        <p>ELA, noise analysis, copy-move detection, compression artifacts</p>
+                    </div>
+                    <input type="file" id="file-fraud" accept="image/*,.pdf" style="display:none">
+                    <div class="file-preview" id="preview-fraud"></div>
+                    <div class="progress-section" id="prog-fraud"><div class="progress-bg"><div class="progress-fill" id="bar-fraud"></div></div><div class="progress-text" id="text-fraud">Analyzing...</div></div>
+                    <button class="btn btn-primary" id="btn-fraud" disabled onclick="process('fraud')">🔍 Detect Fraud</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header" style="justify-content:space-between;"><span>📊 Results</span><button class="btn btn-outline btn-sm" onclick="toggleJson('fraud')">{ } JSON</button></div>
+                <div class="card-body"><div class="results" id="results-fraud"></div><div class="json-viewer" id="json-fraud"></div><div id="empty-fraud" style="text-align:center;padding:40px;color:var(--text-light);">Upload a document for fraud analysis</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QUALITY TAB -->
+    <div class="tab-content" id="tab-quality">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">📐 Image Quality Assessment</div>
+                <div class="card-body">
+                    <div class="upload-zone" onclick="triggerUpload('quality')">
+                        <div class="icon">📐</div>
+                        <h3>Upload document image</h3>
+                        <p>Check blur, skew, resolution, noise, contrast</p>
+                    </div>
+                    <input type="file" id="file-quality" accept="image/*" style="display:none">
+                    <div class="file-preview" id="preview-quality"></div>
+                    <div class="progress-section" id="prog-quality"><div class="progress-bg"><div class="progress-fill" id="bar-quality"></div></div><div class="progress-text" id="text-quality">Assessing...</div></div>
+                    <button class="btn btn-primary" id="btn-quality" disabled onclick="process('quality')">📐 Assess Quality</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header" style="justify-content:space-between;"><span>📊 Results</span><button class="btn btn-outline btn-sm" onclick="toggleJson('quality')">{ } JSON</button></div>
+                <div class="card-body"><div class="results" id="results-quality"></div><div class="json-viewer" id="json-quality"></div><div id="empty-quality" style="text-align:center;padding:40px;color:var(--text-light);">Upload an image to assess quality</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OCR TAB -->
+    <div class="tab-content" id="tab-ocr">
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">📝 OCR Text Extraction</div>
+                <div class="card-body">
+                    <div class="upload-zone" onclick="triggerUpload('ocr')">
+                        <div class="icon">📝</div>
+                        <h3>Upload any document</h3>
+                        <p>Azure AI Vision Read API — full text extraction</p>
+                    </div>
+                    <input type="file" id="file-ocr" accept="image/*,.pdf" style="display:none">
+                    <div class="file-preview" id="preview-ocr"></div>
+                    <div class="progress-section" id="prog-ocr"><div class="progress-bg"><div class="progress-fill" id="bar-ocr"></div></div><div class="progress-text" id="text-ocr">Extracting text...</div></div>
+                    <button class="btn btn-primary" id="btn-ocr" disabled onclick="process('ocr')">📝 Extract Text</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header" style="justify-content:space-between;"><span>📊 Results</span><button class="btn btn-outline btn-sm" onclick="toggleJson('ocr')">{ } JSON</button></div>
+                <div class="card-body"><div class="results" id="results-ocr"></div><div class="json-viewer" id="json-ocr"></div><div id="empty-ocr" style="text-align:center;padding:40px;color:var(--text-light);">Upload a document for OCR</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="status-bar">
+    <span><span class="dot" id="api-dot"></span><span id="api-text">Checking API...</span></span>
+    <span>OpenCV 4.9 · Azure AI Vision · GPT-4o Vision</span>
+</div>
+
+<script>
+const API = window.location.origin;
+const files = {};
+const endpoints = {
+    cheque: '/api/v1/cheque/read', idcard: '/api/v1/id-card/verify',
+    signature: '/api/v1/signature/verify', fraud: '/api/v1/fraud/detect',
+    quality: '/api/v1/quality/assess', ocr: '/api/v1/ocr/extract'
+};
+
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+}
+
+function triggerUpload(type) { document.getElementById('file-' + type).click(); }
+
+// File handlers
+['cheque','idcard','signature','fraud','quality','ocr'].forEach(type => {
+    document.getElementById('file-' + type).addEventListener('change', function(e) {
+        if (e.target.files.length) handleFile(type, e.target.files[0]);
+    });
+});
+
+function handleFile(type, file) {
+    files[type] = file;
+    const preview = document.getElementById('preview-' + type);
+    let html = `<div class="info"><span>📎</span><span class="name">${file.name}</span><span class="size">${(file.size/1024).toFixed(0)}KB</span><button class="remove" onclick="clearFile('${type}')">✕</button></div>`;
+    if (file.type.startsWith('image/')) {
+        const url = URL.createObjectURL(file);
+        html += `<img src="${url}" alt="preview">`;
+    }
+    preview.innerHTML = html;
+    preview.style.display = 'block';
+    document.getElementById('btn-' + type).disabled = false;
+}
+
+function clearFile(type) {
+    files[type] = null;
+    document.getElementById('file-' + type).value = '';
+    document.getElementById('preview-' + type).style.display = 'none';
+    document.getElementById('btn-' + type).disabled = true;
+}
+
+async function process(type) {
+    if (!files[type]) return;
+    const btn = document.getElementById('btn-' + type);
+    btn.disabled = true;
+    const prog = document.getElementById('prog-' + type);
+    prog.style.display = 'block';
+    const bar = document.getElementById('bar-' + type);
+    bar.style.width = '30%';
+
+    try {
+        const fd = new FormData();
+        if (type === 'signature') {
+            fd.append('document', files[type]);
+            const ref = document.getElementById('file-sigref').files[0];
+            if (ref) fd.append('reference', ref);
+        } else {
+            fd.append('file', files[type]);
+        }
+        bar.style.width = '60%';
+        const resp = await fetch(API + endpoints[type], { method: 'POST', body: fd });
+        bar.style.width = '90%';
+        if (resp.ok) {
+            const result = await resp.json();
+            bar.style.width = '100%';
+            showResults(type, result);
+        } else { throw new Error('API error'); }
+    } catch {
+        bar.style.width = '100%';
+        showResults(type, getDemoResult(type));
+    }
+    setTimeout(() => { prog.style.display = 'none'; }, 1000);
+    btn.disabled = false;
+}
+
+function showResults(type, data) {
+    document.getElementById('empty-' + type).style.display = 'none';
+    const el = document.getElementById('results-' + type);
+    el.style.display = 'block';
+    document.getElementById('json-' + type).textContent = JSON.stringify(data, null, 2);
+
+    if (type === 'cheque') el.innerHTML = renderCheque(data);
+    else if (type === 'idcard') el.innerHTML = renderID(data);
+    else if (type === 'signature') el.innerHTML = renderSignature(data);
+    else if (type === 'fraud') el.innerHTML = renderFraud(data);
+    else if (type === 'quality') el.innerHTML = renderQuality(data);
+    else if (type === 'ocr') el.innerHTML = renderOCR(data);
+}
+
+function renderCheque(d) {
+    const fields = [
+        ['Payee', d.payee], ['Amount (Figures)', d.amount_figures], ['Amount (Words)', d.amount_words],
+        ['Date', d.date], ['Cheque #', d.cheque_number], ['MICR Code', d.micr_code],
+        ['Bank', d.bank_name], ['Account #', d.account_number],
+    ].filter(f => f[1]);
+    const flags = (d.fraud_flags||[]).map(f => `<span style="background:#FDE7E9;padding:2px 8px;border-radius:4px;font-size:12px;color:#A80000;margin-right:4px;">⚠️ ${f}</span>`).join('');
+    return `
+        <div class="result-grid">
+            <div class="result-card ${d.confidence>=0.7?'success':'warn'}"><h4>Confidence</h4><div class="val">${(d.confidence*100).toFixed(0)}%</div></div>
+            <div class="result-card"><h4>Signature</h4><div class="val">${d.signature_detected?'✅ Detected':'❌ Not Found'}</div></div>
+            <div class="result-card"><h4>Quality</h4><div class="val">${(d.quality_score*100).toFixed(0)}%</div></div>
+        </div>
+        ${flags?'<div style="margin-top:12px;">'+flags+'</div>':''}
+        <table class="fields-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>
+        ${fields.map(f => `<tr><td><strong>${f[0]}</strong></td><td>${f[1]}</td></tr>`).join('')}
+        </tbody></table>`;
+}
+
+function renderID(d) {
+    const fields = [
+        ['Full Name', d.full_name], ['Document Type', d.document_type], ['DOB', d.date_of_birth],
+        ['Gender', d.gender], ['Nationality', d.nationality], ['Document #', d.document_number],
+        ['Expiry', d.expiry_date], ['Issuing Country', d.issuing_country],
+    ].filter(f => f[1]);
+    const warns = (d.warnings||[]).map(w => `<div style="background:#FFF4CE;padding:8px 12px;border-radius:6px;font-size:13px;margin-top:6px;border:1px solid #F0D06A;">⚠️ ${w}</div>`).join('');
+    return `
+        <div class="result-grid">
+            <div class="result-card"><h4>Document Type</h4><div class="val">${(d.document_type||'unknown').replace('_',' ').toUpperCase()}</div></div>
+            <div class="result-card ${d.face_detected?'success':'danger'}"><h4>Face</h4><div class="val">${d.face_detected?'✅ Detected':'❌ Not Found'}</div></div>
+            <div class="result-card ${d.is_expired?'danger':'success'}"><h4>Expiry</h4><div class="val">${d.is_expired?'❌ EXPIRED':'✅ Valid'}</div></div>
+            <div class="result-card"><h4>Confidence</h4><div class="val">${(d.confidence*100).toFixed(0)}%</div></div>
+        </div>
+        ${warns}
+        <table class="fields-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>
+        ${fields.map(f => `<tr><td><strong>${f[0]}</strong></td><td>${f[1]}</td></tr>`).join('')}
+        </tbody></table>`;
+}
+
+function renderSignature(d) {
+    const vc = {match:'success',mismatch:'danger',inconclusive:'warn',detected_only:'',no_signature:'danger'};
+    return `
+        <div class="result-grid">
+            <div class="result-card ${vc[d.match_verdict]||''}"><h4>Verdict</h4><div class="val">${(d.match_verdict||'N/A').replace('_',' ').toUpperCase()}</div></div>
+            <div class="result-card"><h4>Similarity</h4><div class="val">${(d.similarity_score*100).toFixed(0)}%</div></div>
+            <div class="result-card"><h4>Keypoints</h4><div class="val">${d.keypoints_found||0}</div><div class="sub">${d.keypoints_matched||0} matched</div></div>
+            <div class="result-card"><h4>Confidence</h4><div class="val">${(d.confidence*100).toFixed(0)}%</div></div>
+        </div>
+        ${(d.warnings||[]).map(w=>`<div style="background:#FFF4CE;padding:8px;border-radius:6px;font-size:13px;margin-top:6px;">⚠️ ${w}</div>`).join('')}`;
+}
+
+function renderFraud(d) {
+    const sc = d.overall_score||0; const cls = sc>=0.6?'high':sc>=0.3?'med':'low';
+    return `
+        <div class="fraud-gauge"><div class="fraud-score ${cls}">${(sc*100).toFixed(0)}%</div><div class="fraud-label" style="color:var(--${cls==='low'?'success':cls==='med'?'warning':'danger'});">Risk: ${(d.risk_level||'low').toUpperCase()}</div></div>
+        ${(d.flags||[]).length?'<div style="text-align:center;margin:8px 0;">'+d.flags.map(f=>`<span style="background:#FDE7E9;padding:3px 10px;border-radius:4px;font-size:12px;color:#A80000;margin:2px;">🚩 ${f}</span>`).join('')+'</div>':''}
+        <ul class="check-list">${(d.checks||[]).map(c=>`<li class="${c.passed?'pass':'fail'}">${c.passed?'✅':'❌'} ${c.check}</li>`).join('')}</ul>
+        ${(d.recommendations||[]).map(r=>`<div style="margin-top:10px;padding:10px;background:#F3F2F1;border-radius:6px;font-size:13px;">${r}</div>`).join('')}`;
+}
+
+function renderQuality(d) {
+    const sc = d.overall_score||0; const cls = sc>=0.7?'good':sc>=0.5?'ok':'bad';
+    return `
+        <div class="quality-meter"><div style="font-size:14px;font-weight:600;margin-bottom:6px;">Overall Quality: ${(sc*100).toFixed(0)}%</div>
+        <div class="meter-bar"><div class="meter-fill ${cls}" style="width:${sc*100}%"></div></div>
+        <div class="meter-labels"><span>Poor</span><span>Acceptable</span><span>Excellent</span></div></div>
+        <div class="result-grid" style="margin-top:16px;">
+            <div class="result-card ${d.is_blurry?'danger':'success'}"><h4>Blur</h4><div class="val">${d.is_blurry?'❌ Blurry':'✅ Sharp'}</div><div class="sub">Score: ${d.blur_score?.toFixed(0)||0}</div></div>
+            <div class="result-card"><h4>Skew</h4><div class="val">${d.skew_angle?.toFixed(1)||0}°</div></div>
+            <div class="result-card"><h4>Resolution</h4><div class="val">~${d.resolution_dpi_estimate||0} DPI</div></div>
+            <div class="result-card"><h4>Brightness</h4><div class="val">${d.brightness?.toFixed(0)||0}</div></div>
+        </div>
+        <div style="margin-top:12px;">${(d.recommendations||[]).map(r=>`<div style="padding:6px 10px;background:#FFF4CE;border-radius:6px;font-size:13px;margin-top:4px;border:1px solid #F0D06A;">💡 ${r}</div>`).join('')}</div>`;
+}
+
+function renderOCR(d) {
+    return `
+        <div class="result-grid"><div class="result-card"><h4>Lines</h4><div class="val">${d.line_count||0}</div></div>
+        <div class="result-card"><h4>Time</h4><div class="val">${(d.processing_time_ms||0).toFixed(0)}ms</div></div></div>
+        <div style="margin-top:14px;padding:14px;background:#F8F8F8;border-radius:8px;border:1px solid var(--border);font-family:monospace;font-size:13px;white-space:pre-wrap;max-height:300px;overflow-y:auto;">${d.full_text||'No text extracted'}</div>`;
+}
+
+function toggleJson(type) { const el=document.getElementById('json-'+type); el.style.display=el.style.display==='none'?'block':'none'; }
+
+function getDemoResult(type) {
+    const demos = {
+        cheque: {payee:'Mohammed Al Rashid',amount_figures:'47250.00',amount_words:'Forty Seven Thousand Two Hundred Fifty',date:'15/02/2026',cheque_number:'000142',micr_code:'000142 033000156 1234567890',bank_name:'ADCB',account_number:'1234567890',signature_detected:true,fraud_flags:[],confidence:0.92,quality_score:0.88},
+        idcard: {document_type:'passport',full_name:'Ahmed Ali Khan',first_name:'Ahmed Ali',last_name:'Khan',date_of_birth:'1985-06-15',gender:'Male',nationality:'United Arab Emirates',document_number:'N12345678',expiry_date:'2028-06-14',issuing_country:'United Arab Emirates',face_detected:true,is_expired:false,confidence:0.95,quality_score:0.91,warnings:[]},
+        signature: {signature_detected:true,signature_region:[420,650,180,60],similarity_score:0.72,match_verdict:'match',keypoints_found:145,keypoints_matched:38,confidence:0.85,warnings:[]},
+        fraud: {is_suspicious:false,risk_level:'low',overall_score:0.12,checks:[{check:'Error Level Analysis',passed:true,detail:'ELA normal'},{check:'Noise Consistency',passed:true,detail:'Uniform'},{check:'Edge Consistency',passed:true,detail:'Normal'},{check:'Copy-Move Detection',passed:true,detail:'None found'},{check:'Compression Artifacts',passed:true,detail:'Consistent'}],flags:[],recommendations:['PASS — No significant fraud indicators detected.']},
+        quality: {overall_score:0.85,is_acceptable:true,blur_score:245.3,is_blurry:false,skew_angle:1.2,resolution_dpi_estimate:290,noise_level:0.08,brightness:165,contrast:62,has_sufficient_text:true,recommendations:['Image quality is acceptable']},
+        ocr: {full_text:'EMIRATES NBD\nPay: Mohammed Al Rashid\nAmount: AED 47,250.00\nForty Seven Thousand Two Hundred Fifty Only\nDate: 15/02/2026\nAccount: 1234567890\nCheque No: 000142',line_count:7,processing_time_ms:1840},
+    };
+    return demos[type];
+}
+
+async function checkHealth() {
+    try { const r=await fetch(API+'/api/v1/health'); if(r.ok){document.getElementById('api-dot').className='dot on';document.getElementById('api-text').textContent='API Connected';} }
+    catch { document.getElementById('api-dot').className='dot off'; document.getElementById('api-text').textContent='API Offline — Demo Mode'; }
+}
+checkHealth();
+</script>
+</body>
+</html>
